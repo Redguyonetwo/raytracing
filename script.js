@@ -134,9 +134,9 @@ function getColour(v) {
 }
 
 function getLightLevel(p, n, s) {
-    // If camera is at O, view vector from camera to P = P
+    // If camera is at O, view vector from P to camera = -P
 
-    let V = Vector.subtract2(p, camera)
+    let V = Vector.subtract2(camera, p)
 
     Vector.unit(V)
 
@@ -211,9 +211,9 @@ function clear() {
 
 // Main
 
-const s1 = {x: 0, y: -1, z: 3, r: 1, c: {r: 255, g: 0, b: 0}, s: 50}
+const s1 = {x: 0, y: -1, z: 3, r: 1, c: {r: 255, g: 0, b: 0}, s: 500}
 
-const s2 = {x: 2, y: 0, z: 4, r: 1, c: {r: 0, g: 0, b: 255}, s: 20}
+const s2 = {x: 2, y: 0, z: 4, r: 1, c: {r: 0, g: 0, b: 255}, s: 500}
 
 const s3 = {x: -2, y: 0, z: 4, r: 1, c: {r: 0, g: 255, b: 0}, s: 10}
 
@@ -221,7 +221,7 @@ SPHERES.push(s1, s2, s3)
 
 const p1 = {i: 0.6, x: 2, y: 1, z: 0}
 
-const d1 = {i: 0.5, x: 1, y: 4, z: 4}
+const d1 = {i: 0.2, x: 1, y: 4, z: 4}
 
 POINT_LIGHTS.push(p1)
 
@@ -230,9 +230,9 @@ DIRECTIONAL_LIGHTS.push(d1)
 ctx.translate(0, CANVAS.h)
 ctx.scale(1, -1)
 
-const sumF = (sum, light) => sum + light.i;
+const sumI = (sum, light) => sum + light.i;
 
-max_intensity = AMBIENT_LIGHT_INTENSITY + POINT_LIGHTS.reduce(sumF, 0) + DIRECTIONAL_LIGHTS.reduce(sumF, 0)
+max_intensity = AMBIENT_LIGHT_INTENSITY + POINT_LIGHTS.reduce(sumI, 0) + DIRECTIONAL_LIGHTS.reduce(sumI, 0)
 
 console.log(max_intensity)
 
