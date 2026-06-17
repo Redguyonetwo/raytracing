@@ -1,4 +1,4 @@
-// https://gabrielgambetta.com/computer-graphics-from-scratch/03-light.html
+// https://gabrielgambetta.com/computer-graphics-from-scratch/
 
 import { Vector } from "./vector3.js";
 
@@ -36,11 +36,9 @@ let max_intensity = 1;
 
 const SPHERES = [];
 
-const POINT_LIGHTS = [];
+const LIGHTS = [];
 
-const DIRECTIONAL_LIGHTS = [];
-
-const DEFAULT_COLOUR = "rgb(17, 17, 86)";
+const DEFAULT_COLOUR = {r: 17, g:17, b: 86};
 
 // Raytracing
 
@@ -55,7 +53,11 @@ function canvasToViewport(x, y) {
     let vx = (x - CENTRE.w) * CONVERSION.w;
     let vy = (y - CENTRE.h) * CONVERSION.h;
 
-    return Vector.new(vx, vy, VIEWPORT_DIST)
+    let v = Vector.new(vx, vy, VIEWPORT_DIST)
+
+    Vector.add(v, camera)
+
+    return v;
 }
 
 function viewportToCanvas(x, y) {
@@ -69,14 +71,23 @@ function getPointAlongVector(v, t) {
     return Vector.mult2(v, t)
 }
 
-function getSphereLineIntersection(p, s) {
-    // V is direction vector from camera, as camera is at O
+function reflectRay(ray, normal) {
+    let Rmult = 2 * Vector.dot(ray, normal)
 
-    let v = Vector.subtract2(p, camera)
+    let v = Vector.mult2(normal, Rmult)
 
-    let a = Vector.dot(v, v);
-    let b = -2 * Vector.dot(s, v);
-    let c = Vector.dot(s, s) - (s.r * s.r)
+    Vector.subtract(v, ray)
+
+    return v;
+}
+
+function getSphereLineIntersection(origin, direction, s, t_min = 1) {
+    // Vector from sphere center to ray origin
+    let co = Vector.subtract2(origin, s);
+
+    let a = Vector.dot(direction, direction);
+    let b = 2 * Vector.dot(co, direction);
+    let c = Vector.dot(co, co) - (s.r * s.r);
 
     let discriminant = b * b - 4 * a * c;
 
@@ -92,45 +103,67 @@ function getSphereLineIntersection(p, s) {
     let t1 = (-b - sqrt) / (2 * a);
     let t2 = (-b + sqrt) / (2 * a);
 
-    if (t1 >= 1) { // Smaller value > 1 => P(t1) is beyond viewport, first intersection
+    if (t1 >= t_min) { // Smaller value > 1 => P(t1) is beyond viewport, first intersection
         return t1;
     }
-    if (t2 >= 1) {
+    if (t2 >= t_min) {
         return t2;
     }
     return null;
 }
 
-function getColour(v) {
-    let min_t = Infinity;
+function getFirstIntersection(origin, direction, t_min, t_max) {
+    let best_t = Infinity;
     let closest_sphere = null;
 
     for (let s of SPHERES) {
-        let t = getSphereLineIntersection(v, s);
+        let t = getSphereLineIntersection(origin, direction, s, t_min)
 
         if (t == null) continue;
 
-        if (t < min_t) {
-            min_t = t;
+        if (t < best_t && t > t_min && t < t_max) {
+            best_t = t;
             closest_sphere = s;
         }
     }
 
-    if (closest_sphere == null) return DEFAULT_COLOUR;
+    return {t: best_t, s: closest_sphere}
+} 
 
-    let p = Vector.mult2(v, min_t);
+function getColour(origin, v, t_min = 1, recursion_depth = 3) {
+    let {t, s} = getFirstIntersection(origin, v, t_min, Infinity)
 
-    let normal = Vector.subtract2(p, closest_sphere)
+    if (s == null) return DEFAULT_COLOUR;
+
+    let p = Vector.mult2(v, t);
+
+    let normal = Vector.subtract2(p, s)
 
     Vector.unit(normal);
 
-    let intensity = getLightLevel(p, normal, closest_sphere.s) / max_intensity;
+    let intensity = getLightLevel(p, normal, s.s) / max_intensity;
 
-    let r = closest_sphere.c.r * intensity
-    let g = closest_sphere.c.g * intensity
-    let b = closest_sphere.c.b * intensity
+    let r = s.c.r * intensity
+    let g = s.c.g * intensity
+    let b = s.c.b * intensity
 
-    return `rgb(${r}, ${g}, ${b})`
+    if (recursion_depth <= 0 || s.reflective <= 0) {
+        return {r, g, b}
+    }
+
+    let reflected = reflectRay(Vector.mult2(v, -1), normal)
+
+    let {r: reflected_r, g: reflected_g, b: reflected_b} = getColour(p, reflected, 1e-3, recursion_depth - 1)
+
+    r *= (1 - s.reflective)
+    g *= (1 - s.reflective)
+    b *= (1 - s.reflective)
+
+    reflected_r *= s.reflective
+    reflected_g *= s.reflective
+    reflected_b *= s.reflective
+
+    return {r: r + reflected_r, g: g + reflected_g, b: b + reflected_b}
 }
 
 function getLightLevel(p, n, s) {
@@ -142,45 +175,38 @@ function getLightLevel(p, n, s) {
 
     let i = AMBIENT_LIGHT_INTENSITY;
 
-    for (let pl of POINT_LIGHTS) {
-        let L = Vector.subtract2(pl, p);
+    for (let light of LIGHTS) {
+        let L, t_max;
+        if (light.type == 'p') {
+            L = Vector.subtract2(light, p);
 
-        Vector.unit(L);
+            t_max = Vector.magnitude(L)
 
-        let dot = Vector.dot(n, L)
+            Vector.unit(L);
+        }
+        else if (light.type == 'd') {
+            L = Vector.unit2(light)
+
+            Vector.mult(L, -1)
+
+            t_max = Infinity;
+        }
+
+        // Shadows
+
+        let {t: shadow_t, s: shadow_s} = getFirstIntersection(p, L, 1e-3, t_max)
+        
+        if (shadow_s != null) {
+            //console.log('in shadow')
+            continue;
+        }
 
         // Diffuse reflections
 
-        if (dot > 0) {
-            i += pl.i * dot;
-        }
-
-        // Specular reflections (shiny)
-
-        if (s != -1) {
-            let Rmult = 2 * dot;
-
-            let R = Vector.mult2(n, Rmult)
-
-            Vector.subtract(R, L)
-
-            let dot2 = Vector.dot(R, V)
-
-            if (dot2 > 0) {
-                i += pl.i * Math.pow(dot2, s) // (cos theta)**s
-            }
-        }
-    }
-
-    for (let dl of DIRECTIONAL_LIGHTS) {
-        let L = Vector.unit2(dl)
-
         let dot = Vector.dot(n, L)
 
-        // Diffuse reflection
-
         if (dot > 0) {
-            i += dl.i * dot;
+            i += light.i * dot;
         }
 
         // Specular reflections (shiny)
@@ -195,7 +221,7 @@ function getLightLevel(p, n, s) {
             let dot2 = Vector.dot(R, V)
 
             if (dot2 > 0) {
-                i += dl.i * Math.pow(dot2, s) // (cos theta)**s
+                i += light.i * Math.pow(dot2, s) // (cos theta)**s
             }
         }
     }
@@ -211,28 +237,28 @@ function clear() {
 
 // Main
 
-const s1 = {x: 0, y: -1, z: 3, r: 1, c: {r: 255, g: 0, b: 0}, s: 500}
+const s1 = {x: 0, y: -1, z: 3, r: 1, c: {r: 255, g: 0, b: 0}, s: 500, reflective: 0.2}
 
-const s2 = {x: 2, y: 0, z: 4, r: 1, c: {r: 0, g: 0, b: 255}, s: 500}
+const s2 = {x: 2, y: 0, z: 4, r: 1, c: {r: 0, g: 0, b: 255}, s: 500, reflective: 0.3}
 
-const s3 = {x: -2, y: 0, z: 4, r: 1, c: {r: 0, g: 255, b: 0}, s: 10}
+const s3 = {x: -2, y: 0, z: 4, r: 1, c: {r: 0, g: 255, b: 0}, s: 10, reflective: 0.4}
 
-SPHERES.push(s1, s2, s3)
+const s4 = {x: 0, y: -5001, z: 0, r: 5000, c: {r: 100, g: 255, b: 100}, s: 1000, reflective: 0.3}
 
-const p1 = {i: 0.6, x: 2, y: 1, z: 0}
+SPHERES.push(s1, s2, s3, s4)
 
-const d1 = {i: 0.2, x: 1, y: 4, z: 4}
+const p1 = {type: 'p', i: 0.6, x: 2, y: 1, z: 0}
 
-POINT_LIGHTS.push(p1)
+const d1 = {type: 'd', i: 0.2, x: 1, y: 4, z: 4}
 
-DIRECTIONAL_LIGHTS.push(d1)
+LIGHTS.push(p1, d1)
 
 ctx.translate(0, CANVAS.h)
 ctx.scale(1, -1)
 
 const sumI = (sum, light) => sum + light.i;
 
-max_intensity = AMBIENT_LIGHT_INTENSITY + POINT_LIGHTS.reduce(sumI, 0) + DIRECTIONAL_LIGHTS.reduce(sumI, 0)
+max_intensity = AMBIENT_LIGHT_INTENSITY + LIGHTS.reduce(sumI, 0)
 
 console.log(max_intensity)
 
@@ -241,13 +267,19 @@ for (let x = 0; x < CANVAS.w; x++) {
         // Make (0,0) the centre of the viewport
         let v = canvasToViewport(x, y);
 
-        let colour = getColour(v)
+        Vector.subtract(v, camera)
 
-        ctx.fillStyle = colour
+        Vector.unit(v)
+
+        let {r, g, b} = getColour(camera, v)
+
+        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`
 
         ctx.fillRect(x, y, 1, 1)
     }
 }
+
+console.log('done')
 
 if (false) {
     ctx.strokeStyle = 'white'
