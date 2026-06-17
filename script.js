@@ -1,3 +1,5 @@
+// https://gabrielgambetta.com/computer-graphics-from-scratch/03-light.html
+
 import { Vector } from "./vector3.js";
 
 const CANVAS_ELEMENT = document.getElementById('canvas');
@@ -24,7 +26,7 @@ const CONVERSION_INV = {w: 1 / CONVERSION.w, h: 1 / CONVERSION.h}
 
 const camera = Vector.new(0,0,0)
 
-const VIEWPORT_DIST = 1;
+const VIEWPORT_DIST = 1.1;
 
 const AMBIENT_LIGHT_INTENSITY = 0.2;
 
@@ -67,8 +69,10 @@ function getPointAlongVector(v, t) {
     return Vector.mult2(v, t)
 }
 
-function getSphereLineIntersection(v, s) {
+function getSphereLineIntersection(p, s) {
     // V is direction vector from camera, as camera is at O
+
+    let v = Vector.subtract2(p, camera)
 
     let a = Vector.dot(v, v);
     let b = -2 * Vector.dot(s, v);
@@ -120,7 +124,7 @@ function getColour(v) {
 
     Vector.unit(normal);
 
-    let intensity = getLightLevel(p, normal) / max_intensity;
+    let intensity = getLightLevel(p, normal, closest_sphere.s) / max_intensity;
 
     let r = closest_sphere.c.r * intensity
     let g = closest_sphere.c.g * intensity
@@ -129,7 +133,13 @@ function getColour(v) {
     return `rgb(${r}, ${g}, ${b})`
 }
 
-function getLightLevel(p, n) {
+function getLightLevel(p, n, s) {
+    // If camera is at O, view vector from camera to P = P
+
+    let V = Vector.subtract2(p, camera)
+
+    Vector.unit(V)
+
     let i = AMBIENT_LIGHT_INTENSITY;
 
     for (let pl of POINT_LIGHTS) {
@@ -139,8 +149,26 @@ function getLightLevel(p, n) {
 
         let dot = Vector.dot(n, L)
 
+        // Diffuse reflections
+
         if (dot > 0) {
             i += pl.i * dot;
+        }
+
+        // Specular reflections (shiny)
+
+        if (s != -1) {
+            let Rmult = 2 * dot;
+
+            let R = Vector.mult2(n, Rmult)
+
+            Vector.subtract(R, L)
+
+            let dot2 = Vector.dot(R, V)
+
+            if (dot2 > 0) {
+                i += pl.i * Math.pow(dot2, s) // (cos theta)**s
+            }
         }
     }
 
@@ -149,8 +177,26 @@ function getLightLevel(p, n) {
 
         let dot = Vector.dot(n, L)
 
+        // Diffuse reflection
+
         if (dot > 0) {
             i += dl.i * dot;
+        }
+
+        // Specular reflections (shiny)
+
+        if (s != -1) {
+            let Rmult = 2 * dot;
+
+            let R = Vector.mult2(n, Rmult)
+
+            Vector.subtract(R, L)
+
+            let dot2 = Vector.dot(R, V)
+
+            if (dot2 > 0) {
+                i += dl.i * Math.pow(dot2, s) // (cos theta)**s
+            }
         }
     }
 
@@ -165,17 +211,17 @@ function clear() {
 
 // Main
 
-const s1 = {x: 0, y: -1, z: 3, r: 1, c: {r: 255, g: 0, b: 0}}
+const s1 = {x: 0, y: -1, z: 3, r: 1, c: {r: 255, g: 0, b: 0}, s: 50}
 
-const s2 = {x: 2, y: 0, z: 4, r: 1, c: {r: 0, g: 0, b: 255}}
+const s2 = {x: 2, y: 0, z: 4, r: 1, c: {r: 0, g: 0, b: 255}, s: 20}
 
-const s3 = {x: -2, y: 0, z: 4, r: 1, c: {r: 0, g: 255, b: 0}}
+const s3 = {x: -2, y: 0, z: 4, r: 1, c: {r: 0, g: 255, b: 0}, s: 10}
 
 SPHERES.push(s1, s2, s3)
 
 const p1 = {i: 0.6, x: 2, y: 1, z: 0}
 
-const d1 = {i: 0.2, x: 1, y: 4, z: 4}
+const d1 = {i: 0.5, x: 1, y: 4, z: 4}
 
 POINT_LIGHTS.push(p1)
 
