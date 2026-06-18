@@ -30,7 +30,7 @@ const VIEWPORT_DIST = 1.1;
 
 const AMBIENT_LIGHT_INTENSITY = 0.2;
 
-const AMBIENT_RGB_VALUE = 50;
+const AMBIENT_RGB_VALUE = 200;
 
 let max_intensity = 1;
 
@@ -38,7 +38,7 @@ const SPHERES = [];
 
 const LIGHTS = [];
 
-const DEFAULT_COLOUR = {r: 17, g:17, b: 86};
+const DEFAULT_COLOUR = {r: 100, g:100, b: 100};
 
 // Raytracing
 
@@ -72,36 +72,45 @@ function getPointAlongVector(v, t) {
 }
 
 function reflectRay(ray, normal) {
-    let Rmult = 2 * Vector.dot(ray, normal)
+    let Rmult = -2 * Vector.dot(ray, normal) // make 2 negative because better than Vector.mult(-1)
 
     let v = Vector.mult2(normal, Rmult)
 
-    Vector.subtract(v, ray)
+    Vector.add(v, ray) // then have to add because given -ray
 
     return v;
 }
 
-function getSphereLineIntersection(origin, direction, s, t_min = 1) {
-    // Vector from sphere center to ray origin
-    let co = Vector.subtract2(origin, s);
+function getSphereLineIntersection(origin, direction, s, t_min = 1, is_camera) {
+    let co, c;
+    if (is_camera) {
+        // Use stored variables
+        co = s.co;
+        c = s.dotr;
+    }
+    // Vector from sphere centre to ray origin
+    else {
+        co = Vector.subtract2(origin, s);
+        c = Vector.dot(co, co) - s.r2;
+    }
 
-    let a = Vector.dot(direction, direction);
+    // let a = Vector.dot(direction, direction); - direction is always a unit vector, so a = 1;
     let b = 2 * Vector.dot(co, direction);
-    let c = Vector.dot(co, co) - (s.r * s.r);
+    //let c = Vector.dot(co, co) - s.r2;
 
-    let discriminant = b * b - 4 * a * c;
+    let discriminant = b * b - 4 * c;
 
     if (discriminant < 0) {
         return null;
     }
     if (discriminant == 0) {
-        return -b / (2 * a);
+        return -b * 0.5;
     }
 
     let sqrt = Math.sqrt(discriminant)
 
-    let t1 = (-b - sqrt) / (2 * a);
-    let t2 = (-b + sqrt) / (2 * a);
+    let t1 = (-b - sqrt) * 0.5;
+    let t2 = (-b + sqrt) * 0.5;
 
     if (t1 >= t_min) { // Smaller value > 1 => P(t1) is beyond viewport, first intersection
         return t1;
@@ -112,12 +121,21 @@ function getSphereLineIntersection(origin, direction, s, t_min = 1) {
     return null;
 }
 
-function getFirstIntersection(origin, direction, t_min, t_max) {
+function hasIntersection(origin, direction, s, t_min = 1) {
+    let co = Vector.subtract2(origin, s)
+
+    let b = 2 * Vector.dot(co, direction)
+    let c = Vector.dot(co, co) - s.r2;
+
+    return b * b >= 4 * c;
+}
+
+function getFirstIntersection(origin, direction, t_min, t_max, is_camera) {
     let best_t = Infinity;
     let closest_sphere = null;
 
     for (let s of SPHERES) {
-        let t = getSphereLineIntersection(origin, direction, s, t_min)
+        let t = getSphereLineIntersection(origin, direction, s, t_min, is_camera)
 
         if (t == null) continue;
 
@@ -130,8 +148,8 @@ function getFirstIntersection(origin, direction, t_min, t_max) {
     return {t: best_t, s: closest_sphere}
 } 
 
-function getColour(origin, v, t_min = 1, recursion_depth = 3) {
-    let {t, s} = getFirstIntersection(origin, v, t_min, Infinity)
+function getColour(origin, v, t_min = 1, recursion_depth = 3, is_camera = true) {
+    let {t, s} = getFirstIntersection(origin, v, t_min, Infinity, is_camera)
 
     if (s == null) return DEFAULT_COLOUR;
 
@@ -151,19 +169,24 @@ function getColour(origin, v, t_min = 1, recursion_depth = 3) {
         return {r, g, b}
     }
 
-    let reflected = reflectRay(Vector.mult2(v, -1), normal)
+    let reflected = reflectRay(v, normal)
 
-    let {r: reflected_r, g: reflected_g, b: reflected_b} = getColour(p, reflected, 1e-3, recursion_depth - 1)
+    let {r: reflected_r, g: reflected_g, b: reflected_b} = getColour(p, reflected, 1e-3, recursion_depth - 1, false)
 
-    r *= (1 - s.reflective)
-    g *= (1 - s.reflective)
-    b *= (1 - s.reflective)
+    let m = 1 - s.reflective;
+    r *= m
+    g *= m
+    b *= m
 
-    reflected_r *= s.reflective
-    reflected_g *= s.reflective
-    reflected_b *= s.reflective
+    // reflected_r *= s.reflective
+    // reflected_g *= s.reflective
+    // reflected_b *= s.reflective
 
-    return {r: r + reflected_r, g: g + reflected_g, b: b + reflected_b}
+    r += reflected_r * s.reflective;
+    g += reflected_g * s.reflective;
+    b += reflected_b * s.reflective;
+
+    return {r,g,b}
 }
 
 function getLightLevel(p, n, s) {
@@ -194,12 +217,9 @@ function getLightLevel(p, n, s) {
 
         // Shadows
 
-        let {t: shadow_t, s: shadow_s} = getFirstIntersection(p, L, 1e-3, t_max)
+        let isInShadow = hasIntersection(p, L, 1e-3, t_max)
         
-        if (shadow_s != null) {
-            //console.log('in shadow')
-            continue;
-        }
+        if (isInShadow) continue;
 
         // Diffuse reflections
 
@@ -237,7 +257,7 @@ function clear() {
 
 // Main
 
-const s1 = {x: 0, y: -1, z: 3, r: 1, c: {r: 255, g: 0, b: 0}, s: 500, reflective: 0.2}
+const s1 = {x: 0.1, y: -1, z: 3, r: 1, c: {r: 255, g: 0, b: 0}, s: 500, reflective: 0.3}
 
 const s2 = {x: 2, y: 0, z: 4, r: 1, c: {r: 0, g: 0, b: 255}, s: 500, reflective: 0.3}
 
@@ -245,7 +265,9 @@ const s3 = {x: -2, y: 0, z: 4, r: 1, c: {r: 0, g: 255, b: 0}, s: 10, reflective:
 
 const s4 = {x: 0, y: -5001, z: 0, r: 5000, c: {r: 100, g: 255, b: 100}, s: 1000, reflective: 0.3}
 
-SPHERES.push(s1, s2, s3, s4)
+const s5 = {x: 0, y: 2, z: 7, r: 1.5, c: {r: 255, g: 255, b: 255}, s: 50, reflective: 0.4}
+
+SPHERES.push(s1, s2, s3, s4, s5)
 
 const p1 = {type: 'p', i: 0.6, x: 2, y: 1, z: 0}
 
@@ -260,7 +282,15 @@ const sumI = (sum, light) => sum + light.i;
 
 max_intensity = AMBIENT_LIGHT_INTENSITY + LIGHTS.reduce(sumI, 0)
 
+for (let s of SPHERES) {
+    s.r2 = s.r * s.r;
+    s.co = Vector.subtract2(camera, s)
+    s.dotr = Vector.dot(s.co, s.co) - s.r2;
+}
+
 console.log(max_intensity)
+
+let startTime = performance.now()
 
 for (let x = 0; x < CANVAS.w; x++) {
     for (let y = 0; y < CANVAS.h; y++) {
@@ -271,7 +301,7 @@ for (let x = 0; x < CANVAS.w; x++) {
 
         Vector.unit(v)
 
-        let {r, g, b} = getColour(camera, v)
+        let {r, g, b} = getColour(camera, v, 1, 5)
 
         ctx.fillStyle = `rgb(${r}, ${g}, ${b})`
 
@@ -279,7 +309,7 @@ for (let x = 0; x < CANVAS.w; x++) {
     }
 }
 
-console.log('done')
+console.log('done in', ((performance.now() - startTime) * 0.001).toPrecision(3), 'seconds')
 
 if (false) {
     ctx.strokeStyle = 'white'
