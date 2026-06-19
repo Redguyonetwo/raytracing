@@ -30,7 +30,7 @@ const VIEWPORT_DIST = 1.1;
 
 const AMBIENT_LIGHT_INTENSITY = 0.2;
 
-const AMBIENT_RGB_VALUE = 200;
+const AMBIENT_RGB_VALUE = 50;
 
 let max_intensity = 1;
 
@@ -38,7 +38,7 @@ const SPHERES = [];
 
 const LIGHTS = [];
 
-const DEFAULT_COLOUR = {r: 100, g:100, b: 100};
+const DEFAULT_COLOUR = {r: AMBIENT_RGB_VALUE, g: AMBIENT_RGB_VALUE, b: AMBIENT_RGB_VALUE};
 
 // Raytracing
 
@@ -121,15 +121,6 @@ function getSphereLineIntersection(origin, direction, s, t_min = 1, is_camera) {
     return null;
 }
 
-function hasIntersection(origin, direction, s, t_min = 1) {
-    let co = Vector.subtract2(origin, s)
-
-    let b = 2 * Vector.dot(co, direction)
-    let c = Vector.dot(co, co) - s.r2;
-
-    return b * b >= 4 * c;
-}
-
 function getFirstIntersection(origin, direction, t_min, t_max, is_camera) {
     let best_t = Infinity;
     let closest_sphere = null;
@@ -147,6 +138,23 @@ function getFirstIntersection(origin, direction, t_min, t_max, is_camera) {
 
     return {t: best_t, s: closest_sphere}
 } 
+
+function isInShadow(origin, direction, t_min, t_max, is_camera) {
+    let best_t = Infinity;
+    let closest_sphere = null;
+
+    for (let s of SPHERES) {
+        let t = getSphereLineIntersection(origin, direction, s, t_min, is_camera)
+
+        if (t == null) continue;
+
+        if (t >= t_min && t <= t_max) {
+            return true;
+        }
+    }
+
+    return false;
+}
 
 function getColour(origin, v, t_min = 1, recursion_depth = 3, is_camera = true) {
     let {t, s} = getFirstIntersection(origin, v, t_min, Infinity, is_camera)
@@ -217,9 +225,12 @@ function getLightLevel(p, n, s) {
 
         // Shadows
 
-        let isInShadow = hasIntersection(p, L, 1e-3, t_max)
+        let shadow = isInShadow(p, L, 1e-3, t_max, false) // either use isInShadow or getFirstIntersection, but i think this is faster
         
-        if (isInShadow) continue;
+        if (shadow) {
+            // console.log('in shadow')
+            continue;
+        }
 
         // Diffuse reflections
 
@@ -257,21 +268,21 @@ function clear() {
 
 // Main
 
-const s1 = {x: 0.1, y: -1, z: 3, r: 1, c: {r: 255, g: 0, b: 0}, s: 500, reflective: 0.3}
+const s1 = {x: 0.1, y: -1, z: 3, r: 1, c: {r: 255, g: 0, b: 0}, s: 50, reflective: 0.3}
 
 const s2 = {x: 2, y: 0, z: 4, r: 1, c: {r: 0, g: 0, b: 255}, s: 500, reflective: 0.3}
 
 const s3 = {x: -2, y: 0, z: 4, r: 1, c: {r: 0, g: 255, b: 0}, s: 10, reflective: 0.4}
 
-const s4 = {x: 0, y: -5001, z: 0, r: 5000, c: {r: 100, g: 255, b: 100}, s: 1000, reflective: 0.3}
+const s4 = {x: 0, y: -5001, z: 0, r: 5000, c: {r: 100, g: 255, b: 100}, s: -1, reflective: 0}
 
-const s5 = {x: 0, y: 2, z: 7, r: 1.5, c: {r: 255, g: 255, b: 255}, s: 50, reflective: 0.4}
+const s5 = {x: 0, y: 2, z: 7, r: 1.5, c: {r: 255, g: 0, b: 255}, s: 50, reflective: 0.5}
 
 SPHERES.push(s1, s2, s3, s4, s5)
 
-const p1 = {type: 'p', i: 0.6, x: 2, y: 1, z: 0}
+const p1 = {type: 'p', i: 0.6, x: 0, y: 1, z: 3.5}
 
-const d1 = {type: 'd', i: 0.2, x: 1, y: 4, z: 4}
+const d1 = {type: 'd', i: 0.2, x: 1, y: 4, z: 4} //this is a direction vector, not position
 
 LIGHTS.push(p1, d1)
 
