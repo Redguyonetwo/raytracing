@@ -30,15 +30,13 @@ const VIEWPORT_DIST = 1.1;
 
 const AMBIENT_LIGHT_INTENSITY = 0.2;
 
-const AMBIENT_RGB_VALUE = 50;
+let DEFAULT_COLOUR;
 
 let max_intensity = 1;
 
 const SPHERES = [];
 
 const LIGHTS = [];
-
-const DEFAULT_COLOUR = {r: AMBIENT_RGB_VALUE, g: AMBIENT_RGB_VALUE, b: AMBIENT_RGB_VALUE};
 
 // Raytracing
 
@@ -270,13 +268,13 @@ function clear() {
 
 const s1 = {x: 0.1, y: -1, z: 3, r: 1, c: {r: 255, g: 0, b: 0}, s: 50, reflective: 0.3}
 
-const s2 = {x: 2, y: 0, z: 4, r: 1, c: {r: 0, g: 0, b: 255}, s: 500, reflective: 0.3}
+const s2 = {x: 2, y: 0, z: 4, r: 1, c: {r: 0, g: 0, b: 255}, s: 20, reflective: 0.35}
 
 const s3 = {x: -2, y: 0, z: 4, r: 1, c: {r: 0, g: 255, b: 0}, s: 10, reflective: 0.4}
 
-const s4 = {x: 0, y: -5001, z: 0, r: 5000, c: {r: 100, g: 255, b: 100}, s: -1, reflective: 0}
+const s4 = {x: 0, y: -5001, z: 0, r: 5000, c: {r: 255, g: 255, b: 100}, s: -1, reflective: 0}
 
-const s5 = {x: 0, y: 2, z: 7, r: 1.5, c: {r: 255, g: 0, b: 255}, s: 50, reflective: 0.5}
+const s5 = {x: 1, y: 2, z: 7, r: 1.5, c: {r: 255, g: 0, b: 255}, s: 50, reflective: 0.4}
 
 SPHERES.push(s1, s2, s3, s4, s5)
 
@@ -292,6 +290,10 @@ ctx.scale(1, -1)
 const sumI = (sum, light) => sum + light.i;
 
 max_intensity = AMBIENT_LIGHT_INTENSITY + LIGHTS.reduce(sumI, 0)
+
+let rgb = 255 * AMBIENT_LIGHT_INTENSITY / max_intensity;
+
+DEFAULT_COLOUR = {r: rgb, g: rgb, b: rgb};
 
 for (let s of SPHERES) {
     s.r2 = s.r * s.r;
